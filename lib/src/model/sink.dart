@@ -15,6 +15,7 @@ abstract class PulseAudioSink with _$PulseAudioSink {
     required String description,
     required bool mute,
     required double volume,
+    @Default(true) bool available,
   }) = _PulseAudioSink;
 
   factory PulseAudioSink.fromNative(pa_sink_info device) {
@@ -31,6 +32,20 @@ abstract class PulseAudioSink with _$PulseAudioSink {
       description: device.description.cast<Utf8>().toDartString(),
       mute: device.mute == 1,
       volume: volumeAvg,
+      available: _hasAvailablePort(device),
     );
   }
+}
+
+bool _hasAvailablePort(pa_sink_info device) {
+  if (device.n_ports == 0 || device.ports == nullptr) {
+    return true;
+  }
+  for (var i = 0; i < device.n_ports; i++) {
+    final port = device.ports[i].ref;
+    if (port.available != pa_port_available.PA_PORT_AVAILABLE_NO.value) {
+      return true;
+    }
+  }
+  return false;
 }

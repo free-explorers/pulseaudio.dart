@@ -15,6 +15,7 @@ abstract class PulseAudioSource with _$PulseAudioSource {
     required String description,
     required bool mute,
     required double volume,
+    @Default(true) bool available,
   }) = _PulseAudioSource;
 
   factory PulseAudioSource.fromNative(pa_source_info source) {
@@ -31,6 +32,20 @@ abstract class PulseAudioSource with _$PulseAudioSource {
       description: source.description.cast<Utf8>().toDartString(),
       mute: source.mute == 1,
       volume: volumeAvg,
+      available: _hasAvailablePort(source),
     );
   }
+}
+
+bool _hasAvailablePort(pa_source_info device) {
+  if (device.n_ports == 0 || device.ports == nullptr) {
+    return true;
+  }
+  for (var i = 0; i < device.n_ports; i++) {
+    final port = device.ports[i].ref;
+    if (port.available != pa_port_available.PA_PORT_AVAILABLE_NO.value) {
+      return true;
+    }
+  }
+  return false;
 }

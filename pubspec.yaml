@@ -1,6 +1,6 @@
 name: pulseaudio
 description: "This repository contains a Dart client library to interact with PulseAudio, a sound server that provides a sound system for POSIX systems."
-version: 0.0.8
+version: 0.0.9
 homepage: https://github.com/free-explorers/pulseaudio.dart
 repository: https://github.com/free-explorers/pulseaudio.dart
 
