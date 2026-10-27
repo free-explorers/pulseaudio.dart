@@ -1,3 +1,6 @@
+## 0.0.9
+* expose `available` on sinks and sources based on port availability
+
 ## 0.0.7
 * link dynamic lib to `libpulse.so.0` instead of `libpulse.so`
 

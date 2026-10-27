@@ -20,6 +20,7 @@ mixin _$PulseAudioSink {
   String get description;
   bool get mute;
   double get volume;
+  bool get available;
 
   /// Create a copy of PulseAudioSink
   /// with the given fields replaced by the non-null parameter values.
@@ -39,16 +40,18 @@ mixin _$PulseAudioSink {
             (identical(other.description, description) ||
                 other.description == description) &&
             (identical(other.mute, mute) || other.mute == mute) &&
-            (identical(other.volume, volume) || other.volume == volume));
+            (identical(other.volume, volume) || other.volume == volume) &&
+            (identical(other.available, available) ||
+                other.available == available));
   }
 
   @override
-  int get hashCode =>
-      Object.hash(runtimeType, index, name, description, mute, volume);
+  int get hashCode => Object.hash(
+      runtimeType, index, name, description, mute, volume, available);
 
   @override
   String toString() {
-    return 'PulseAudioSink(index: $index, name: $name, description: $description, mute: $mute, volume: $volume)';
+    return 'PulseAudioSink(index: $index, name: $name, description: $description, mute: $mute, volume: $volume, available: $available)';
   }
 }
 
@@ -59,7 +62,12 @@ abstract mixin class $PulseAudioSinkCopyWith<$Res> {
       _$PulseAudioSinkCopyWithImpl;
   @useResult
   $Res call(
-      {int index, String name, String description, bool mute, double volume});
+      {int index,
+      String name,
+      String description,
+      bool mute,
+      double volume,
+      bool available});
 }
 
 /// @nodoc
@@ -80,6 +88,7 @@ class _$PulseAudioSinkCopyWithImpl<$Res>
     Object? description = null,
     Object? mute = null,
     Object? volume = null,
+    Object? available = null,
   }) {
     return _then(_self.copyWith(
       index: null == index
@@ -102,6 +111,10 @@ class _$PulseAudioSinkCopyWithImpl<$Res>
           ? _self.volume
           : volume // ignore: cast_nullable_to_non_nullable
               as double,
+      available: null == available
+          ? _self.available
+          : available // ignore: cast_nullable_to_non_nullable
+              as bool,
     ));
   }
 }
@@ -114,7 +127,8 @@ class _PulseAudioSink implements PulseAudioSink {
       required this.name,
       required this.description,
       required this.mute,
-      required this.volume});
+      required this.volume,
+      this.available = true});
 
   @override
   final int index;
@@ -126,6 +140,9 @@ class _PulseAudioSink implements PulseAudioSink {
   final bool mute;
   @override
   final double volume;
+  @override
+  @JsonKey()
+  final bool available;
 
   /// Create a copy of PulseAudioSink
   /// with the given fields replaced by the non-null parameter values.
@@ -145,16 +162,18 @@ class _PulseAudioSink implements PulseAudioSink {
             (identical(other.description, description) ||
                 other.description == description) &&
             (identical(other.mute, mute) || other.mute == mute) &&
-            (identical(other.volume, volume) || other.volume == volume));
+            (identical(other.volume, volume) || other.volume == volume) &&
+            (identical(other.available, available) ||
+                other.available == available));
   }
 
   @override
-  int get hashCode =>
-      Object.hash(runtimeType, index, name, description, mute, volume);
+  int get hashCode => Object.hash(
+      runtimeType, index, name, description, mute, volume, available);
 
   @override
   String toString() {
-    return 'PulseAudioSink(index: $index, name: $name, description: $description, mute: $mute, volume: $volume)';
+    return 'PulseAudioSink(index: $index, name: $name, description: $description, mute: $mute, volume: $volume, available: $available)';
   }
 }
 
@@ -167,7 +186,12 @@ abstract mixin class _$PulseAudioSinkCopyWith<$Res>
   @override
   @useResult
   $Res call(
-      {int index, String name, String description, bool mute, double volume});
+      {int index,
+      String name,
+      String description,
+      bool mute,
+      double volume,
+      bool available});
 }
 
 /// @nodoc
@@ -188,6 +212,7 @@ class __$PulseAudioSinkCopyWithImpl<$Res>
     Object? description = null,
     Object? mute = null,
     Object? volume = null,
+    Object? available = null,
   }) {
     return _then(_PulseAudioSink(
       index: null == index
@@ -210,6 +235,10 @@ class __$PulseAudioSinkCopyWithImpl<$Res>
           ? _self.volume
           : volume // ignore: cast_nullable_to_non_nullable
               as double,
+      available: null == available
+          ? _self.available
+          : available // ignore: cast_nullable_to_non_nullable
+              as bool,
     ));
   }
 }
