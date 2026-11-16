@@ -345,9 +345,88 @@ class PulseIsolate {
           );
         }
         break;
+
+      case PA_SUBSCRIPTION_EVENT_CARD:
+        // A card change can alter its sinks and sources (port availability,
+        // active port, profile) without the server sending a sink or source
+        // event for them, so fetch them again.
+        if (eventType != PA_SUBSCRIPTION_EVENT_REMOVE) {
+          _refreshCardDevices(context, idx);
+        }
+        break;
     }
 
     if (op.address != nullptr.address) pa.pa_operation_unref(op);
+  }
+
+  /// Fetches the sinks and sources of the card at [cardIndex] again and
+  /// reports each of them as changed.
+  static void _refreshCardDevices(Pointer<pa_context> context, int cardIndex) {
+    final sinkCard = calloc<Uint32>()..value = cardIndex;
+    final sinkOp = pa.pa_context_get_sink_info_list(
+      context,
+      Pointer.fromFunction(_onCardSinkInfo),
+      sinkCard.cast(),
+    );
+    if (sinkOp == nullptr) {
+      calloc.free(sinkCard);
+    } else {
+      pa.pa_operation_unref(sinkOp);
+    }
+
+    final sourceCard = calloc<Uint32>()..value = cardIndex;
+    final sourceOp = pa.pa_context_get_source_info_list(
+      context,
+      Pointer.fromFunction(_onCardSourceInfo),
+      sourceCard.cast(),
+    );
+    if (sourceOp == nullptr) {
+      calloc.free(sourceCard);
+    } else {
+      pa.pa_operation_unref(sourceOp);
+    }
+  }
+
+  static void _onCardSinkInfo(
+    Pointer<pa_context> context,
+    Pointer<pa_sink_info> sink,
+    int eol,
+    Pointer<Void> userdata,
+  ) {
+    final cardIndex = userdata.cast<Uint32>();
+    // The list ends (eol > 0) or fails (eol < 0) with a call carrying no
+    // sink; only then is the card index no longer needed.
+    if (eol != 0) {
+      calloc.free(cardIndex);
+      return;
+    }
+    if (sink == nullptr) return;
+    if (sink.ref.card == cardIndex.value) {
+      _instance!._sendPort.send(IsolateResponse.onSinkChanged(
+        sink: PulseAudioSink.fromNative(sink.ref),
+      ));
+    }
+  }
+
+  static void _onCardSourceInfo(
+    Pointer<pa_context> context,
+    Pointer<pa_source_info> source,
+    int eol,
+    Pointer<Void> userdata,
+  ) {
+    final cardIndex = userdata.cast<Uint32>();
+    // The list ends (eol > 0) or fails (eol < 0) with a call carrying no
+    // source; only then is the card index no longer needed.
+    if (eol != 0) {
+      calloc.free(cardIndex);
+      return;
+    }
+    if (source == nullptr) return;
+    if (source.ref.card == cardIndex.value) {
+      _instance!._sendPort.send(IsolateResponse.onSourceChanged(
+        source: PulseAudioSource.fromNative(source.ref),
+      ));
+    }
   }
 
   static _setSinkVolume(int requestId, String name, double volume) {

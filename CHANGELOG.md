@@ -1,3 +1,8 @@
+## 0.0.10
+* fetch the sinks and sources of a card again when the card changes, so a
+  change the server only reports on the card (such as port availability)
+  reaches `onSinkChanged` and `onSourceChanged`
+
 ## 0.0.9
 * expose `available` on sinks and sources based on port availability
 
