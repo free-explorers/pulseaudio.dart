@@ -46,7 +46,9 @@ class PulseIsolate {
     );
 
     final recPort = ReceivePort();
-    _instance!._sendPort.send(recPort.sendPort);
+    // The client wakes the main loop with [pa_mainloop_wakeup] after each
+    // request, so it needs the loop's address along with the port.
+    _instance!._sendPort.send((recPort.sendPort, mainloop.address));
 
     recPort.cast<IsolateRequest>().listen((message) {
       switch (message) {
@@ -91,41 +93,55 @@ class PulseIsolate {
     });
     Isolate.current.addOnExitListener(exitPort.sendPort);
 
-    _runMainLoop();
+    _prepareMainLoop();
     return _instance!;
   }
 
-  static Future<void> _runMainLoop() async {
-    if (_instance == null) return;
-    if (_instance!.operationCallbackMap.isEmpty) {
-      // Prepare the main loop for events
-      pa.pa_mainloop_prepare(_instance!.mainloop, 50 * 1000);
-      // Check for events without blocking
-      pa.pa_mainloop_poll(_instance!.mainloop);
-      pa.pa_mainloop_dispatch(_instance!.mainloop);
-    } else {
-      while (_instance!.operationCallbackMap.isNotEmpty) {
-        pa.pa_mainloop_iterate(_instance!.mainloop, 1, _instance!.ret);
-
-        final operations = _instance!.operationCallbackMap.keys.toList();
-        for (final operation in operations) {
-          if (pa.pa_operation_get_state(operation) ==
-              pa_operation_state.PA_OPERATION_DONE) {
-            final callback = _instance!.operationCallbackMap[operation]!;
-            callback.call();
-            _instance!.operationCallbackMap.remove(operation);
-            pa.pa_operation_unref(operation);
-          }
-        }
-      }
-    }
-    Timer.run(_runMainLoop);
+  /// First half of a main loop iteration: prepare, then let the isolate
+  /// handle its pending requests before [_pollMainLoop] blocks.
+  ///
+  /// The poll waits without a timeout, so an idle connection costs no wakeup;
+  /// it returns on a server event, a timer of libpulse, or a
+  /// [pa_mainloop_wakeup] from the client. Preparing clears pending wakeups,
+  /// which is why the requests are handled between the two halves: a request
+  /// queued before the prepare is handled before the poll, and one queued after
+  /// it wakes the poll. A request handled there may add or enable main loop
+  /// events, which libpulse answers with a wakeup of its own.
+  static void _prepareMainLoop() {
+    final instance = _instance;
+    if (instance == null) return;
+    pa.pa_mainloop_prepare(instance.mainloop, -1);
+    Timer.run(_pollMainLoop);
   }
 
+  /// Second half of a main loop iteration: block until something happens,
+  /// dispatch it, then complete the operations it finished.
+  static void _pollMainLoop() {
+    final instance = _instance;
+    if (instance == null) return;
+    pa.pa_mainloop_poll(instance.mainloop);
+    pa.pa_mainloop_dispatch(instance.mainloop);
+
+    final operations = instance.operationCallbackMap.keys.toList();
+    for (final operation in operations) {
+      if (pa.pa_operation_get_state(operation) ==
+          pa_operation_state.PA_OPERATION_DONE) {
+        final callback = instance.operationCallbackMap.remove(operation)!;
+        callback.call();
+        pa.pa_operation_unref(operation);
+      }
+    }
+    Timer.run(_prepareMainLoop);
+  }
+
+  /// Disconnects and ends the isolate.
+  ///
+  /// The main loop is left to the client, which frees it once the isolate has
+  /// exited: the client may still be inside [pa_mainloop_wakeup] for the
+  /// request that led here.
   static void dispose() {
     pa.pa_context_disconnect(_instance!.context);
     pa.pa_context_unref(_instance!.context);
-    pa.pa_mainloop_free(_instance!.mainloop);
     calloc.free(_instance!.ret);
     _instance = null;
     Isolate.current.kill(priority: Isolate.immediate);

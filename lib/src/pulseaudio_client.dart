@@ -16,8 +16,10 @@
 library pulseaudio;
 
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:isolate';
 
+import 'package:pulseaudio/src/generated_bindings.dart';
 import 'package:pulseaudio/src/model/isolate_request.dart';
 import 'package:pulseaudio/src/model/isolate_response.dart';
 import 'package:pulseaudio/src/model/server_info.dart';
@@ -32,6 +34,9 @@ class PulseAudioClient {
   PulseAudioClient._(this._receiverPort, this._broadcastStream);
   final ReceivePort _receiverPort;
   late final SendPort _sendPort;
+
+  /// The isolate's main loop, woken after each request (see [_send]).
+  Pointer<pa_mainloop>? _mainloop;
   final Stream<dynamic> _broadcastStream;
 
   int _lastRequestId = 0;
@@ -120,8 +125,9 @@ class PulseAudioClient {
     );
 
     _broadcastStream.listen((message) {
-      if (message is SendPort) {
-        _sendPort = message;
+      if (message case (final SendPort sendPort, final int mainloop)) {
+        _sendPort = sendPort;
+        _mainloop = Pointer.fromAddress(mainloop);
       }
       if (message is OnReadyResponse) {
         _initializedCompleter.complete();
@@ -129,11 +135,24 @@ class PulseAudioClient {
       }
     });
 
+    // The main loop is freed here once the isolate has exited, never by the
+    // isolate itself: [_send] may still be waking it when the isolate handles
+    // the dispose request.
+    final exitPort = ReceivePort();
+    exitPort.first.then((_) {
+      final mainloop = _mainloop;
+      _mainloop = null;
+      if (mainloop != null) pa.pa_mainloop_free(mainloop);
+      _receiverPort.close();
+      exitPort.close();
+    });
+
     await Isolate.spawn(
       (sendPort) {
         PulseIsolate(sendPort);
       },
       _receiverPort.sendPort,
+      onExit: exitPort.sendPort,
     );
 
     await _initializedCompleter.future;
@@ -141,9 +160,18 @@ class PulseAudioClient {
 
   /// Disposes the PulseAudio connection.
   dispose() {
-    _sendPort.send(IsolateRequest.dispose(requestId: newRequestId));
-    _receiverPort.close();
+    _send(IsolateRequest.dispose(requestId: newRequestId));
     _instance = null;
+  }
+
+  /// Sends [request] to the isolate and wakes its main loop.
+  ///
+  /// The isolate blocks in `pa_mainloop_poll` until something happens, so an
+  /// idle connection costs no CPU; the wakeup makes it handle the request.
+  void _send(IsolateRequest request) {
+    _sendPort.send(request);
+    final mainloop = _mainloop;
+    if (mainloop != null) pa.pa_mainloop_wakeup(mainloop);
   }
 
   /// Get Lists of [PulseAudioSink]
@@ -152,7 +180,7 @@ class PulseAudioClient {
       throw Exception("PulseAudio is not initialized");
     }
     final requestId = newRequestId;
-    _sendPort.send(IsolateRequest.getSinkList(requestId: requestId));
+    _send(IsolateRequest.getSinkList(requestId: requestId));
     final response = await _broadcastStream.firstWhere((message) =>
             message is OnSinkListResponse && message.requestId == requestId)
         as OnSinkListResponse;
@@ -165,7 +193,7 @@ class PulseAudioClient {
       throw Exception("PulseAudio is not initialized");
     }
     final requestId = newRequestId;
-    _sendPort.send(IsolateRequest.getSourceList(requestId: requestId));
+    _send(IsolateRequest.getSourceList(requestId: requestId));
     final response = await _broadcastStream.firstWhere((message) =>
             message is OnSourceListResponse && message.requestId == requestId)
         as OnSourceListResponse;
@@ -178,7 +206,7 @@ class PulseAudioClient {
       throw Exception("PulseAudio is not initialized");
     }
     final requestId = newRequestId;
-    _sendPort.send(IsolateRequest.getServerInfo(requestId: requestId));
+    _send(IsolateRequest.getServerInfo(requestId: requestId));
     final response = await _broadcastStream.firstWhere((message) =>
             message is OnServerInfoResponse && message.requestId == requestId)
         as OnServerInfoResponse;
@@ -191,7 +219,7 @@ class PulseAudioClient {
       throw Exception("PulseAudio is not initialized");
     }
     final requestId = newRequestId;
-    _sendPort.send(IsolateRequest.setSinkMute(
+    _send(IsolateRequest.setSinkMute(
         requestId: requestId, sinkName: sinkName, mute: mute));
     await _broadcastStream.firstWhere((message) =>
         message is SetSinkMuteResponse && message.requestId == requestId);
@@ -204,7 +232,7 @@ class PulseAudioClient {
     }
     final requestId = newRequestId;
 
-    _sendPort.send(IsolateRequest.setSinkVolume(
+    _send(IsolateRequest.setSinkVolume(
         requestId: requestId, sinkName: sinkName, volume: volume));
     await _broadcastStream.firstWhere((message) =>
         message is SetSinkVolumeResponse && message.requestId == requestId);
@@ -217,7 +245,7 @@ class PulseAudioClient {
     }
     final requestId = newRequestId;
 
-    _sendPort.send(IsolateRequest.setSourceMute(
+    _send(IsolateRequest.setSourceMute(
         requestId: requestId, sourceName: sourceName, mute: mute));
 
     await _broadcastStream.firstWhere((message) =>
@@ -231,7 +259,7 @@ class PulseAudioClient {
     }
     final requestId = newRequestId;
 
-    _sendPort.send(IsolateRequest.setSourceVolume(
+    _send(IsolateRequest.setSourceVolume(
         requestId: requestId, sourceName: sourceName, volume: volume));
 
     await _broadcastStream.firstWhere((message) =>
@@ -245,7 +273,7 @@ class PulseAudioClient {
     }
     final requestId = newRequestId;
 
-    _sendPort.send(IsolateRequest.setDefaultSink(
+    _send(IsolateRequest.setDefaultSink(
         requestId: requestId, sinkName: sinkName));
 
     await _broadcastStream.firstWhere((message) =>
@@ -259,7 +287,7 @@ class PulseAudioClient {
     }
     final requestId = newRequestId;
 
-    _sendPort.send(IsolateRequest.setDefaultSource(
+    _send(IsolateRequest.setDefaultSource(
         requestId: requestId, sourceName: sourceName));
 
     await _broadcastStream.firstWhere((message) =>

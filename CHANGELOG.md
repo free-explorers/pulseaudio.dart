@@ -1,3 +1,9 @@
+## 0.0.11
+* wait for PulseAudio events instead of polling the main loop every 50 ms:
+  an idle client no longer wakes the CPU, and requests are answered at once
+  instead of on the next poll
+* free the main loop only once the isolate has exited
+
 ## 0.0.10
 * fetch the sinks and sources of a card again when the card changes, so a
   change the server only reports on the card (such as port availability)
